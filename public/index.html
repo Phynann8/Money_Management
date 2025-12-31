@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Money Manager Pro - Cloud Finance Tracker</title>
+    
+    <!-- Link external CSS -->
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Firebase Configuration (as module) -->
+    <script type="module" src="firebase-config.js"></script>
+</head>
+<body>
+    <!-- Auth Screen -->
+    <div id="authScreen" class="auth-screen">
+        <div class="auth-card">
+            <h1>💰 Money Manager</h1>
+            <p>Your Personal Finance Tracker on Cloud</p>
+            <div id="errorMessage"></div>
+            
+            <!-- Sign Up Form -->
+            <div id="signupForm" style="display: none;">
+                <div class="form-group">
+                    <label for="signupFullName">Full Name</label>
+                    <input type="text" id="signupFullName" placeholder="Your Full Name" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupEmail">Email</label>
+                    <input type="email" id="signupEmail" placeholder="your@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupPassword">Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="signupPassword" placeholder="Min. 6 characters" required>
+                        <button type="button" class="toggle-password" onclick="togglePasswordVisibility('signupPassword')">
+                            <svg id="signupPasswordIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="handleSignup()" id="signupBtn">Create Account</button>
+                <div class="toggle-form">
+                    Already have an account? <a onclick="toggleAuthForm()">Sign In</a>
+                </div>
+            </div>
+
+            <!-- Sign In Form -->
+            <div id="signinForm">
+                <div class="form-group">
+                    <label for="signinEmail">Email</label>
+                    <input type="email" id="signinEmail" placeholder="your@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="signinPassword">Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="signinPassword" placeholder="Your password" required>
+                        <button type="button" class="toggle-password" onclick="togglePasswordVisibility('signinPassword')">
+                            <svg id="signinPasswordIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="handleSignin()" id="signinBtn">Sign In</button>
+                <div class="toggle-form">
+                    Don't have an account? <a onclick="toggleAuthForm()">Create One</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Screen -->
+    <div id="appScreen" style="display: none;">
+        <div class="header">
+            <div class="container" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <h1>💰 Money Manager</h1>
+                <div class="header-right">
+                    <span class="user-email" id="userEmail"></span>
+                    <button class="btn-logout" onclick="handleLogout()">Logout</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div id="successMessage"></div>
+
+            <!-- Dashboard Cards -->
+            <div class="dashboard">
+                <div class="card">
+                    <div class="card-label">Total Balance</div>
+                    <div class="card-value" id="totalBalance">$0.00</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Total Income</div>
+                    <div class="card-value" id="totalIncome">$0.00</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Total Expenses</div>
+                    <div class="card-value" id="totalExpenses">$0.00</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Savings Rate</div>
+                    <div class="card-value" id="savingsRate">0%</div>
+                </div>
+            </div>
+
+            <!-- Add Transaction Form -->
+            <div class="form-section">
+                <h2>Add Transaction</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <input type="text" id="description" placeholder="e.g., Groceries, Salary">
+                    </div>
+                    <div class="form-group">
+                        <label for="amount">Amount</label>
+                        <input type="number" id="amount" placeholder="0.00" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="category">Category</label>
+                        <select id="category">
+                            <option value="">Select Category</option>
+                            <option value="Income">💼 Income</option>
+                            <option value="Food">🍔 Food & Dining</option>
+                            <option value="Transport">🚗 Transport</option>
+                            <option value="Utilities">🏠 Utilities</option>
+                            <option value="Entertainment">🎬 Entertainment</option>
+                            <option value="Shopping">🛍️ Shopping</option>
+                            <option value="Health">⚕️ Health</option>
+                            <option value="Education">📚 Education</option>
+                            <option value="Other">📌 Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="type">Type</label>
+                        <select id="type">
+                            <option value="expense">Expense</option>
+                            <option value="income">Income</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="date">Date</label>
+                        <input type="date" id="date">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="addTransaction()" id="addBtn">Add Transaction</button>
+            </div>
+
+            <!-- Transactions List -->
+            <div class="transactions-section">
+                <h2>Recent Transactions</h2>
+                <div id="transactionsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Link external JavaScript -->
+    <script type="module" src="script.js"></script>
+</body>
+</html>
