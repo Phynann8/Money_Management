@@ -348,3 +348,318 @@ if (document.readyState === 'loading') {
     initFirebase();
 }
 
+// THEME UTILS
+window.toggleTheme = function() {
+    const html = document.documentElement;
+    const current = html.getAttribute('data-theme');
+    const next = current === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('mmp-theme', next);
+}
+
+// Init theme on load
+const savedTheme = localStorage.getItem('mmp-theme') || 'light';
+document.documentElement.setAttribute('data-theme', savedTheme);
+
+// CHART LOGIC
+let expenseChart = null;
+
+function updateChart(transactions) {
+    const ctx = document.getElementById('expenseChart');
+    if (!ctx) return;
+
+    // Filter for expenses only
+    const expenses = transactions.filter(t => t.type === 'expense');
+    
+    // Aggregate by category
+    const categoryTotals = {};
+    expenses.forEach(t => {
+        if (categoryTotals[t.category]) {
+            categoryTotals[t.category] += t.amount;
+        } else {
+            categoryTotals[t.category] = t.amount;
+        }
+    });
+
+    const labels = Object.keys(categoryTotals);
+    const data = Object.values(categoryTotals);
+    
+    // Colors for categories
+    const backgroundColors = [
+        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+        '#FF9F40', '#E7E9ED', '#764ba2', '#2080a0', '#ef4444'
+    ];
+
+    if (expenseChart) {
+        expenseChart.destroy();
+    }
+
+    if (data.length === 0) {
+        return; 
+    }
+
+    expenseChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: backgroundColors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: {
+                        color: getComputedStyle(document.documentElement).getPropertyValue('--color-text')
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Hook into updateUI to refresh chart
+const originalUpdateUI = updateUI;
+updateUI = function(transactions) {
+    originalUpdateUI(transactions);
+    updateChart(transactions);
+}
+
+// EXPORT TO CSV
+window.exportToCSV = function() {
+    if (allTransactions.length === 0) {
+        alert('No transactions to export');
+        return;
+    }
+
+    const headers = ['Date', 'Description', 'Category', 'Type', 'Amount', 'ID'];
+    const rows = allTransactions.map(t => [
+        t.date,
+        "", // Escape quotes
+        t.category,
+        t.type,
+        t.amount,
+        t.id
+    ]);
+
+    let csvContent = "data:text/csv;charset=utf-8," 
+        + headers.join(",") + "\n" 
+        + rows.map(e => e.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", money_manager_export_.csv);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// MONTHLY REPORT LOGIC
+window.showMonthlyReport = function() {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+    // Filter data
+    const thisMonthData = allTransactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+    
+    const lastMonthData = allTransactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === lastMonth && d.getFullYear() === lastMonthYear;
+    });
+
+    // Calculate Totals
+    const calcExpenses = (data) => data.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const calcIncome = (data) => data.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+
+    const thisExp = calcExpenses(thisMonthData);
+    const lastExp = calcExpenses(lastMonthData);
+    const thisInc = calcIncome(thisMonthData);
+    
+    let comparisonText = '';
+    let trendClass = '';
+    
+    if (lastExp === 0) {
+        comparisonText = "No data for last month";
+        trendClass = "";
+    } else {
+        const diff = thisExp - lastExp;
+        const percent = ((diff / lastExp) * 100).toFixed(1);
+        if (diff > 0) {
+            comparisonText =  % more than last month;
+            trendClass = "trend-up";
+        } else {
+            comparisonText =  % less than last month;
+            trendClass = "trend-down";
+        }
+    }
+
+    const html = 
+        <div class="report-grid">
+            <div class="report-card">
+                <div class="report-label">This Month Income</div>
+                <div class="report-value" style="color: var(--color-success)">+e:\Website_Development\Money_Management\public{thisInc.toFixed(2)}</div>
+            </div>
+            <div class="report-card">
+                <div class="report-label">This Month Spent</div>
+                <div class="report-value" style="color: var(--color-danger)">-e:\Website_Development\Money_Management\public{thisExp.toFixed(2)}</div>
+            </div>
+        </div>
+        
+        <div class="report-section-title">Analysis</div>
+        <p style="text-align: center; margin-bottom: 20px;">
+            Spending is <strong class=""></strong>
+        </p>
+
+        <div class="report-section-title">Top Spending Category</div>
+        
+    ;
+
+    document.getElementById('reportContent').innerHTML = html;
+    document.getElementById('reportModal').style.display = 'flex';
+}
+
+function getTopCategoryHTML(data) {
+    const expenses = data.filter(t => t.type === 'expense');
+    if (expenses.length === 0) return '<p class="text-secondary text-center">No expenses this month.</p>';
+
+    const totals = {};
+    expenses.forEach(t => totals[t.category] = (totals[t.category] || 0) + t.amount);
+    
+    // Sort
+    const sorted = Object.entries(totals).sort((a,b) => b[1] - a[1]);
+    const top = sorted[0];
+    
+    return 
+        <div class="transaction-item" style="background: var(--color-bg);">
+            <div class="transaction-info">
+                <div class="transaction-description"></div>
+            </div>
+            <div class="transaction-amount expense">
+                -e:\Website_Development\Money_Management\public{top[1].toFixed(2)}
+            </div>
+        </div>
+    ;
+}
+
+window.closeReportModal = function() {
+    document.getElementById('reportModal').style.display = 'none';
+}
+
+// BUDGET LOGIC
+window.openAddBudgetModal = function() {
+    document.getElementById('budgetModal').style.display = 'flex';
+}
+
+window.closeBudgetModal = function() {
+    document.getElementById('budgetModal').style.display = 'none';
+}
+
+window.saveBudget = async function() {
+    const category = document.getElementById('budgetCategory').value;
+    const limit = parseFloat(document.getElementById('budgetLimit').value);
+    
+    if (!limit || limit <= 0) {
+        alert("Please enter a valid limit");
+        return;
+    }
+
+    try {
+        const db = window.db;
+        // Check if budget exists for this category (update) or add new
+        // Ideally we query first. For simplicity, we'll just add/overwrite by using category as ID part or query.
+        // Let's us use setDoc with a composite ID or just addDoc.
+        // Using addDoc for now but we'll filter unique later or delete old.
+        // Better: Use category as doc ID to enforce unique budget per category
+        
+        await setDoc(doc(db, 'users', currentUser.uid, 'budgets', category), {
+            category,
+            limit,
+            updatedAt: new Date()
+        });
+        
+        closeBudgetModal();
+        loadBudgets();
+        showSuccess('Budget set successfully!');
+    } catch (error) {
+        console.error(error);
+        alert('Error saving budget');
+    }
+}
+
+async function loadBudgets() {
+    if (!currentUser) return;
+    const db = window.db;
+    try {
+        const snapshot = await getDocs(collection(db, 'users', currentUser.uid, 'budgets'));
+        let budgets = [];
+        snapshot.forEach(doc => {
+            budgets.push(doc.data());
+        });
+        renderBudgets(budgets);
+    } catch (error) {
+        console.log("No budgets found yet or error", error);
+    }
+}
+
+function renderBudgets(budgets) {
+    if (budgets.length === 0) {
+        document.getElementById('budgetList').innerHTML = '<div class="empty-state" style="padding: 10px;">No budgets set.</div>';
+        return;
+    }
+
+    // Calculate actual spending for this month for each budget category
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear(); // Corrected syntax here in thought, apply in code
+
+    const expensesThisMonth = allTransactions.filter(t => {
+        const d = new Date(t.date);
+        return t.type === 'expense' && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+
+    const html = budgets.map(b => {
+        const spent = expensesThisMonth
+            .filter(t => t.category === b.category)
+            .reduce((sum, t) => sum + t.amount, 0);
+            
+        const pct = Math.min(100, Math.round((spent / b.limit) * 100));
+        let colorClass = '';
+        if (pct > 90) colorClass = 'danger';
+        else if (pct > 70) colorClass = 'warning';
+        
+        return 
+            <div class="budget-item">
+                <div class="budget-header">
+                    <span class="budget-cat"></span>
+                    <span class="budget-amount">e:\Website_Development\Money_Management\public{spent.toFixed(0)} / e:\Website_Development\Money_Management\public{b.limit}</span>
+                </div>
+                <div class="budget-progress-bg">
+                    <div class="budget-progress-fill " style="width: %"></div>
+                </div>
+            </div>
+        ;
+    }).join('');
+    
+    document.getElementById('budgetList').innerHTML = html;
+}
+
+// Update budgets when transactions change (hook into updateUI or loadTransactions)
+// We need to call loadBudgets() initially and when transactions change
+const originalLoadTransactionsForBudgets = loadTransactions;
+loadTransactions = async function() {
+    await originalLoadTransactionsForBudgets();
+    loadBudgets(); // Refresh budgets after transactions load so we have 'allTransactions' populated
+}
+
