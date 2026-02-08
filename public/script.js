@@ -1,13 +1,14 @@
-import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js";
-import { doc, getDoc, setDoc, collection, addDoc, query, orderBy, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { doc, getDoc, setDoc, collection, addDoc, query, orderBy, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 let currentUser = null;
+let allTransactions = []; // Global cache for CSV export and budgets
 
 // Toggle password visibility
-window.togglePasswordVisibility = function(inputId) {
+window.togglePasswordVisibility = function (inputId) {
     const input = document.getElementById(inputId);
     const icon = document.getElementById(inputId + 'Icon');
-    
+
     if (input.type === 'password') {
         input.type = 'text';
         icon.innerHTML = `
@@ -27,7 +28,7 @@ async function initFirebase() {
     try {
         let auth = window.auth;
         let db = window.db;
-        
+
         if (!auth || !db) {
             showAuthError('Firebase is loading... Please wait a moment and refresh the page.');
             setTimeout(initFirebase, 1000);
@@ -68,13 +69,13 @@ async function autoCreateUserDocument() {
             // Check if fullName is missing for existing users
             if (!userDoc.data().fullName) {
                 const fullName = prompt('Welcome! Please enter your full name to complete your profile:');
-                
+
                 if (fullName && fullName.trim() !== '') {
                     await setDoc(userRef, {
                         fullName: fullName.trim(),
                         displayName: fullName.trim()
                     }, { merge: true });
-                    
+
                     console.log('Full name added to existing user');
                 }
             }
@@ -94,13 +95,13 @@ function showAuthScreen() {
 async function showAppScreen() {
     document.getElementById('authScreen').style.display = 'none';
     document.getElementById('appScreen').style.display = 'block';
-    
+
     // Load user data and display full name
     try {
         const db = window.db;
         const userRef = doc(db, 'users', currentUser.uid);
         const userDoc = await getDoc(userRef);
-        
+
         if (userDoc.exists() && userDoc.data().fullName) {
             document.getElementById('userEmail').textContent = userDoc.data().fullName;
         } else {
@@ -110,21 +111,21 @@ async function showAppScreen() {
         console.error('Error loading user data:', error);
         document.getElementById('userEmail').textContent = currentUser.email;
     }
-    
+
     document.getElementById('date').valueAsDate = new Date();
     loadTransactions();
 }
 
 
-window.toggleAuthForm = function() {
-    document.getElementById('signupForm').style.display = 
+window.toggleAuthForm = function () {
+    document.getElementById('signupForm').style.display =
         document.getElementById('signupForm').style.display === 'none' ? 'block' : 'none';
-    document.getElementById('signinForm').style.display = 
+    document.getElementById('signinForm').style.display =
         document.getElementById('signinForm').style.display === 'none' ? 'block' : 'none';
     clearAuthError();
 }
 
-window.handleSignup = async function() {
+window.handleSignup = async function () {
     const fullName = document.getElementById('signupFullName').value.trim();
     const email = document.getElementById('signupEmail').value.trim();
     const password = document.getElementById('signupPassword').value;
@@ -147,7 +148,7 @@ window.handleSignup = async function() {
         const db = window.db;
 
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        
+
         await setDoc(doc(db, 'users', userCredential.user.uid), {
             email: email,
             fullName: fullName,
@@ -167,7 +168,7 @@ window.handleSignup = async function() {
     }
 }
 
-window.handleSignin = async function() {
+window.handleSignin = async function () {
     const email = document.getElementById('signinEmail').value.trim();
     const password = document.getElementById('signinPassword').value;
 
@@ -190,7 +191,7 @@ window.handleSignin = async function() {
     }
 }
 
-window.handleLogout = async function() {
+window.handleLogout = async function () {
     try {
         const auth = window.auth;
         await signOut(auth);
@@ -199,7 +200,7 @@ window.handleLogout = async function() {
     }
 }
 
-window.addTransaction = async function() {
+window.addTransaction = async function () {
     const description = document.getElementById('description').value.trim();
     const amount = parseFloat(document.getElementById('amount').value);
     const category = document.getElementById('category').value;
@@ -242,7 +243,7 @@ window.addTransaction = async function() {
     }
 }
 
-window.deleteTransaction = async function(docId) {
+window.deleteTransaction = async function (docId) {
     if (!confirm('Delete this transaction?')) return;
 
     try {
@@ -263,14 +264,16 @@ async function loadTransactions() {
             collection(db, 'users', currentUser.uid, 'transactions'),
             orderBy('createdAt', 'desc')
         );
-        
+
         const snapshot = await getDocs(q);
         let transactions = [];
         snapshot.forEach(doc => {
             transactions.push({ id: doc.id, ...doc.data() });
         });
 
+        allTransactions = transactions; // Populate global cache
         updateUI(transactions);
+        loadBudgets(); // Validate budget limits
     } catch (error) {
         console.error('Error loading transactions:', error);
     }
@@ -298,7 +301,7 @@ function updateUI(transactions) {
 
 function renderTransactions(transactions) {
     if (transactions.length === 0) {
-        document.getElementById('transactionsList').innerHTML = 
+        document.getElementById('transactionsList').innerHTML =
             '<div class="empty-state">No transactions yet. Add one to get started!</div>';
         return;
     }
@@ -349,7 +352,7 @@ if (document.readyState === 'loading') {
 }
 
 // THEME UTILS
-window.toggleTheme = function() {
+window.toggleTheme = function () {
     const html = document.documentElement;
     const current = html.getAttribute('data-theme');
     const next = current === 'dark' ? 'light' : 'dark';
@@ -370,7 +373,7 @@ function updateChart(transactions) {
 
     // Filter for expenses only
     const expenses = transactions.filter(t => t.type === 'expense');
-    
+
     // Aggregate by category
     const categoryTotals = {};
     expenses.forEach(t => {
@@ -383,7 +386,7 @@ function updateChart(transactions) {
 
     const labels = Object.keys(categoryTotals);
     const data = Object.values(categoryTotals);
-    
+
     // Colors for categories
     const backgroundColors = [
         '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
@@ -395,7 +398,7 @@ function updateChart(transactions) {
     }
 
     if (data.length === 0) {
-        return; 
+        return;
     }
 
     expenseChart = new Chart(ctx, {
@@ -425,13 +428,13 @@ function updateChart(transactions) {
 
 // Hook into updateUI to refresh chart
 const originalUpdateUI = updateUI;
-updateUI = function(transactions) {
+updateUI = function (transactions) {
     originalUpdateUI(transactions);
     updateChart(transactions);
 }
 
 // EXPORT TO CSV
-window.exportToCSV = function() {
+window.exportToCSV = function () {
     if (allTransactions.length === 0) {
         alert('No transactions to export');
         return;
@@ -440,28 +443,28 @@ window.exportToCSV = function() {
     const headers = ['Date', 'Description', 'Category', 'Type', 'Amount', 'ID'];
     const rows = allTransactions.map(t => [
         t.date,
-        "", // Escape quotes
+        `"${(t.description || '').replace(/"/g, '""')}"`, // Escape quotes properly
         t.category,
         t.type,
         t.amount,
         t.id
     ]);
 
-    let csvContent = "data:text/csv;charset=utf-8," 
-        + headers.join(",") + "\n" 
+    let csvContent = "data:text/csv;charset=utf-8,"
+        + headers.join(",") + "\n"
         + rows.map(e => e.join(",")).join("\n");
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", money_manager_export_.csv);
+    link.setAttribute("download", `money_manager_export_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 }
 
 // MONTHLY REPORT LOGIC
-window.showMonthlyReport = function() {
+window.showMonthlyReport = function () {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
@@ -473,7 +476,7 @@ window.showMonthlyReport = function() {
         const d = new Date(t.date);
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
-    
+
     const lastMonthData = allTransactions.filter(t => {
         const d = new Date(t.date);
         return d.getMonth() === lastMonth && d.getFullYear() === lastMonthYear;
@@ -486,10 +489,10 @@ window.showMonthlyReport = function() {
     const thisExp = calcExpenses(thisMonthData);
     const lastExp = calcExpenses(lastMonthData);
     const thisInc = calcIncome(thisMonthData);
-    
+
     let comparisonText = '';
     let trendClass = '';
-    
+
     if (lastExp === 0) {
         comparisonText = "No data for last month";
         trendClass = "";
@@ -497,34 +500,34 @@ window.showMonthlyReport = function() {
         const diff = thisExp - lastExp;
         const percent = ((diff / lastExp) * 100).toFixed(1);
         if (diff > 0) {
-            comparisonText =  % more than last month;
+            comparisonText = `${percent}% more than last month`;
             trendClass = "trend-up";
         } else {
-            comparisonText =  % less than last month;
+            comparisonText = `${Math.abs(percent)}% less than last month`;
             trendClass = "trend-down";
         }
     }
 
-    const html = 
+    const html = `
         <div class="report-grid">
             <div class="report-card">
                 <div class="report-label">This Month Income</div>
-                <div class="report-value" style="color: var(--color-success)">+e:\Website_Development\Money_Management\public{thisInc.toFixed(2)}</div>
+                <div class="report-value" style="color: var(--color-success)">+$${thisInc.toFixed(2)}</div>
             </div>
             <div class="report-card">
                 <div class="report-label">This Month Spent</div>
-                <div class="report-value" style="color: var(--color-danger)">-e:\Website_Development\Money_Management\public{thisExp.toFixed(2)}</div>
+                <div class="report-value" style="color: var(--color-danger)">-$${thisExp.toFixed(2)}</div>
             </div>
         </div>
         
         <div class="report-section-title">Analysis</div>
         <p style="text-align: center; margin-bottom: 20px;">
-            Spending is <strong class=""></strong>
+            Spending is <strong class="${trendClass}">${comparisonText}</strong>
         </p>
 
         <div class="report-section-title">Top Spending Category</div>
-        
-    ;
+        ${getTopCategoryHTML(thisMonthData)}
+    `;
 
     document.getElementById('reportContent').innerHTML = html;
     document.getElementById('reportModal').style.display = 'flex';
@@ -536,40 +539,40 @@ function getTopCategoryHTML(data) {
 
     const totals = {};
     expenses.forEach(t => totals[t.category] = (totals[t.category] || 0) + t.amount);
-    
+
     // Sort
-    const sorted = Object.entries(totals).sort((a,b) => b[1] - a[1]);
+    const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
     const top = sorted[0];
-    
-    return 
+
+    return `
         <div class="transaction-item" style="background: var(--color-bg);">
             <div class="transaction-info">
-                <div class="transaction-description"></div>
+                <div class="transaction-description">${top[0]}</div>
             </div>
             <div class="transaction-amount expense">
-                -e:\Website_Development\Money_Management\public{top[1].toFixed(2)}
+                -$${top[1].toFixed(2)}
             </div>
         </div>
-    ;
+    `;
 }
 
-window.closeReportModal = function() {
+window.closeReportModal = function () {
     document.getElementById('reportModal').style.display = 'none';
 }
 
 // BUDGET LOGIC
-window.openAddBudgetModal = function() {
+window.openAddBudgetModal = function () {
     document.getElementById('budgetModal').style.display = 'flex';
 }
 
-window.closeBudgetModal = function() {
+window.closeBudgetModal = function () {
     document.getElementById('budgetModal').style.display = 'none';
 }
 
-window.saveBudget = async function() {
+window.saveBudget = async function () {
     const category = document.getElementById('budgetCategory').value;
     const limit = parseFloat(document.getElementById('budgetLimit').value);
-    
+
     if (!limit || limit <= 0) {
         alert("Please enter a valid limit");
         return;
@@ -582,13 +585,13 @@ window.saveBudget = async function() {
         // Let's us use setDoc with a composite ID or just addDoc.
         // Using addDoc for now but we'll filter unique later or delete old.
         // Better: Use category as doc ID to enforce unique budget per category
-        
+
         await setDoc(doc(db, 'users', currentUser.uid, 'budgets', category), {
             category,
             limit,
             updatedAt: new Date()
         });
-        
+
         closeBudgetModal();
         loadBudgets();
         showSuccess('Budget set successfully!');
@@ -622,7 +625,7 @@ function renderBudgets(budgets) {
     // Calculate actual spending for this month for each budget category
     const now = new Date();
     const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear(); // Corrected syntax here in thought, apply in code
+    const currentYear = now.getFullYear();
 
     const expensesThisMonth = allTransactions.filter(t => {
         const d = new Date(t.date);
@@ -633,33 +636,36 @@ function renderBudgets(budgets) {
         const spent = expensesThisMonth
             .filter(t => t.category === b.category)
             .reduce((sum, t) => sum + t.amount, 0);
-            
+
         const pct = Math.min(100, Math.round((spent / b.limit) * 100));
         let colorClass = '';
-        if (pct > 90) colorClass = 'danger';
-        else if (pct > 70) colorClass = 'warning';
-        
-        return 
+        let alertIcon = '';
+        if (pct > 100) {
+            colorClass = 'danger';
+            alertIcon = '🚨 OVER BUDGET!';
+        } else if (pct > 90) {
+            colorClass = 'danger';
+            alertIcon = '⚠️ Almost exceeded';
+        } else if (pct > 70) {
+            colorClass = 'warning';
+        }
+
+        return `
             <div class="budget-item">
                 <div class="budget-header">
-                    <span class="budget-cat"></span>
-                    <span class="budget-amount">e:\Website_Development\Money_Management\public{spent.toFixed(0)} / e:\Website_Development\Money_Management\public{b.limit}</span>
+                    <span class="budget-cat">${b.category}</span>
+                    <span class="budget-amount">$${spent.toFixed(0)} / $${b.limit}</span>
                 </div>
                 <div class="budget-progress-bg">
-                    <div class="budget-progress-fill " style="width: %"></div>
+                    <div class="budget-progress-fill ${colorClass}" style="width: ${pct}%"></div>
                 </div>
+                ${alertIcon ? `<div class="budget-alert ${colorClass}">${alertIcon}</div>` : ''}
             </div>
-        ;
+        `;
     }).join('');
-    
+
     document.getElementById('budgetList').innerHTML = html;
 }
 
-// Update budgets when transactions change (hook into updateUI or loadTransactions)
-// We need to call loadBudgets() initially and when transactions change
-const originalLoadTransactionsForBudgets = loadTransactions;
-loadTransactions = async function() {
-    await originalLoadTransactionsForBudgets();
-    loadBudgets(); // Refresh budgets after transactions load so we have 'allTransactions' populated
-}
+
 
