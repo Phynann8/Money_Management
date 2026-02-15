@@ -30,3 +30,5 @@ firebase.json
 # Build
 dist/
 build/
+
+public/config.js
